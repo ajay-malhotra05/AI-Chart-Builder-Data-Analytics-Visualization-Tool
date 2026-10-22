@@ -1,0 +1,14 @@
+[
+  { "id": 1, "role": "Senior Data Architect", "department": "Data Platform", "experience_level": "Senior", "years_experience": 9, "salary_usd": 185000, "remote_ratio": 100, "country": "United States" },
+  { "id": 2, "role": "MLOps Engineer", "department": "AI Engineering", "experience_level": "Mid", "years_experience": 4, "salary_usd": 142000, "remote_ratio": 50, "country": "Germany" },
+  { "id": 3, "role": "Full Stack Engineer", "department": "Product", "experience_level": "Senior", "years_experience": 7, "salary_usd": 160000, "remote_ratio": 100, "country": "United States" },
+  { "id": 4, "role": "Data Analyst", "department": "Business Intelligence", "experience_level": "Junior", "years_experience": 2, "salary_usd": 85000, "remote_ratio": 0, "country": "United Kingdom" },
+  { "id": 5, "role": "Principal AI Researcher", "department": "AI Engineering", "experience_level": "Executive", "years_experience": 12, "salary_usd": 245000, "remote_ratio": 100, "country": "United States" },
+  { "id": 6, "role": "Backend Engineer", "department": "Core Infrastructure", "experience_level": "Mid", "years_experience": 5, "salary_usd": 135000, "remote_ratio": 50, "country": "Canada" },
+  { "id": 7, "role": "Frontend Architect", "department": "Product", "experience_level": "Senior", "years_experience": 8, "salary_usd": 172000, "remote_ratio": 100, "country": "United States" },
+  { "id": 8, "role": "DevOps Engineer", "department": "Core Infrastructure", "experience_level": "Senior", "years_experience": 6, "salary_usd": 155000, "remote_ratio": 100, "country": "Australia" },
+  { "id": 9, "role": "Data Engineer", "department": "Data Platform", "experience_level": "Mid", "years_experience": 4, "salary_usd": 128000, "remote_ratio": 50, "country": "Netherlands" },
+  { "id": 10, "role": "Product Designer", "department": "Product", "experience_level": "Mid", "years_experience": 5, "salary_usd": 115000, "remote_ratio": 0, "country": "United States" },
+  { "id": 11, "role": "Data Scientist", "department": "AI Engineering", "experience_level": "Senior", "years_experience": 6, "salary_usd": 168000, "remote_ratio": 100, "country": "United States" },
+  { "id": 12, "role": "Security Engineer", "department": "Core Infrastructure", "experience_level": "Senior", "years_experience": 8, "salary_usd": 175000, "remote_ratio": 50, "country": "United States" }
+]

@@ -1,0 +1,62 @@
+/* AI Chart Builder - Custom Dashboard Styles */
+
+.form-select {
+  width: 100%;
+  font-size: 0.75rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  color: #1e293b;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.form-select:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
+
+.chart-type-btn {
+  padding: 0.5rem 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  background-color: #ffffff;
+  color: #475569;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.chart-type-btn:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.chart-type-btn.active {
+  background-color: #eef2ff;
+  border-color: #6366f1;
+  color: #4338ca;
+  font-weight: 600;
+}
+
+.sort-btn {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sort-btn.active {
+  background-color: #ffffff;
+  border-color: #6366f1;
+  color: #4338ca;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}

@@ -1,0 +1,6 @@
+{
+  "name": "AI Chart Builder",
+  "description": "Full-stack data analysis pipeline and AI-driven Chart.js visualization engine for CSV and JSON datasets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
