@@ -65,6 +65,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ queryResult, chartType
             display: isCircular || queryResult.chart.datasets.length > 1,
             position: isCircular ? 'right' : 'top',
             labels: {
+              color: '#94A3B8',
               boxWidth: 14,
               boxHeight: 14,
               padding: 16,
@@ -101,9 +102,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ queryResult, chartType
           ? {
               x: {
                 grid: {
-                  color: 'rgba(226, 232, 240, 0.6)',
+                  color: 'rgba(148, 163, 184, 0.12)',
                 },
+                border: { display: false },
                 ticks: {
+                  color: '#94A3B8',
                   font: { size: 11 },
                   maxRotation: 45,
                   minRotation: 0,
@@ -111,9 +114,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ queryResult, chartType
               },
               y: {
                 grid: {
-                  color: 'rgba(226, 232, 240, 0.6)',
+                  color: 'rgba(148, 163, 184, 0.12)',
                 },
+                border: { display: false },
                 ticks: {
+                  color: '#94A3B8',
                   font: { size: 11 },
                 },
                 beginAtZero: true,

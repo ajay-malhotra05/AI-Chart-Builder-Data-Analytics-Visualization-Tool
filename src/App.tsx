@@ -1,434 +1,430 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Upload,
-  FileSpreadsheet,
-  Code2,
-  Sparkles,
-  Database,
-  BarChart2,
-  CheckCircle,
-  AlertCircle,
-  RefreshCw,
-  FolderOpen,
+  AlertCircle, BarChart3, Bell, ChevronRight, CircleHelp, Database, FileSpreadsheet,
+  History, LayoutDashboard, Menu, Moon, Plus, Search, Settings, Sparkles, Upload,
+  WandSparkles, X, Layers3, Table2, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
+import { ChartCanvas } from './components/ChartCanvas';
+import { DataPreview } from './components/DataPreview';
+import { QueryBuilder } from './components/QueryBuilder';
 import { ClientDataPipeline, getDefaultGroupColumn } from './utils/pipeline';
 import { SAMPLE_DATASETS } from './utils/sampleData';
 import { ChartType, DatasetSchema, QueryParams, QueryResult } from './types';
-import { ChartCanvas } from './components/ChartCanvas';
-import { QueryBuilder } from './components/QueryBuilder';
-import { DataPreview } from './components/DataPreview';
-import { CodeInspector } from './components/CodeInspector';
+
+type Page = 'overview' | 'datasets' | 'ai' | 'visualizations' | 'query' | 'history' | 'settings';
+
+interface LoadedDataset {
+  id: string;
+  name: string;
+  pipeline: ClientDataPipeline;
+  schema: DatasetSchema;
+  uploadedAt: Date;
+}
+
+interface HistoryItem {
+  id: number;
+  prompt: string;
+  dataset: string;
+  createdAt: Date;
+  result: QueryResult | null;
+}
+
+const navigation: { id: Page; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'datasets', label: 'Datasets', icon: Database },
+  { id: 'ai', label: 'AI Analysis', icon: WandSparkles },
+  { id: 'visualizations', label: 'Visualizations', icon: BarChart3 },
+  { id: 'query', label: 'Query Builder', icon: Table2 },
+  { id: 'history', label: 'History', icon: History },
+];
+
+const pageTitles: Record<Page, string> = {
+  overview: 'Overview',
+  datasets: 'Datasets',
+  ai: 'AI Analysis',
+  visualizations: 'Visualizations',
+  query: 'Query Builder',
+  history: 'Analysis History',
+  settings: 'Settings',
+};
 
 export default function App() {
-  const [pipeline, setPipeline] = useState<ClientDataPipeline | null>(null);
-  const [schema, setSchema] = useState<DatasetSchema | null>(null);
-  const [currentDatasetName, setCurrentDatasetName] = useState<string>('E-Commerce Orders & Profits');
+  const [page, setPage] = useState<Page>('overview');
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [datasets, setDatasets] = useState<LoadedDataset[]>([]);
+  const [activeDatasetId, setActiveDatasetId] = useState('');
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [activeBottomTab, setActiveBottomTab] = useState<'preview' | 'code'>('preview');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [aiNote, setAiNote] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Default query parameters
   const [queryParams, setQueryParams] = useState<QueryParams>({
-    group_by: 'category',
-    target_column: 'sales',
-    metric: 'sum',
-    top_n: 10,
-    sort_order: 'desc',
-    chart_type: 'bar',
-    palette: 'indigo',
+    group_by: '', metric: 'count', top_n: 10, sort_order: 'desc', chart_type: 'bar', palette: 'indigo',
   });
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load initial sample dataset on mount
-  useEffect(() => {
-    loadDatasetFromText(SAMPLE_DATASETS[0].data, 'csv', SAMPLE_DATASETS[0].name);
-  }, []);
+  const activeDataset = datasets.find((dataset) => dataset.id === activeDatasetId) || datasets[0];
+  const pipeline = activeDataset?.pipeline || null;
+  const schema = activeDataset?.schema || null;
+  const missingValues = schema?.columns.reduce((total, column) => total + (column.null_count || 0), 0) || 0;
 
-  const loadDatasetFromText = (content: string, format: 'csv' | 'json', name: string) => {
+  const configureQuery = (nextPipeline: ClientDataPipeline) => {
+    const columns = nextPipeline.schema?.columns || [];
+    const category = getDefaultGroupColumn(columns, nextPipeline.schema?.row_count || 0);
+    const numeric = columns.find((column) => column.type === 'numeric');
+    const nextParams: QueryParams = {
+      group_by: category?.name || columns[0]?.name || '',
+      target_column: numeric?.name,
+      metric: numeric ? 'sum' : 'count',
+      top_n: 10,
+      sort_order: 'desc',
+      chart_type: 'bar',
+      palette: 'indigo',
+    };
+    setQueryParams(nextParams);
+    try {
+      setQueryResult(nextPipeline.transform(nextParams));
+    } catch {
+      setQueryResult(null);
+    }
+  };
+
+  const loadDataset = (content: string, format: 'csv' | 'json', name: string) => {
     try {
       setIsLoading(true);
-      setErrorMessage(null);
-      setAiNote(null);
-
-      const newPipeline = format === 'csv'
+      setError(null);
+      const nextPipeline = format === 'csv'
         ? ClientDataPipeline.parseCSV(content)
         : ClientDataPipeline.parseJSON(content);
-
-      if (!newPipeline.schema || newPipeline.schema.row_count === 0) {
-        throw new Error('No valid records found in the uploaded data.');
+      if (!nextPipeline.schema || nextPipeline.schema.row_count === 0) {
+        throw new Error('No valid records were found in the dataset.');
       }
-
-      setPipeline(newPipeline);
-      setSchema(newPipeline.schema);
-      setCurrentDatasetName(name);
-
-      // Auto-configure default query parameters based on schema
-      const cols = newPipeline.schema.columns;
-      const firstCat = getDefaultGroupColumn(cols, newPipeline.schema.row_count);
-      const firstNum = cols.find((c) => c.type === 'numeric');
-
-      const initialParams: QueryParams = {
-        group_by: firstCat?.name || (cols[0] ? cols[0].name : ''),
-        target_column: firstNum?.name,
-        metric: firstNum ? 'sum' : 'count',
-        top_n: 10,
-        sort_order: 'desc',
-        chart_type: 'bar',
-        palette: 'indigo',
+      const id = `${Date.now()}-${name}`;
+      const loaded: LoadedDataset = {
+        id, name, pipeline: nextPipeline, schema: nextPipeline.schema, uploadedAt: new Date(),
       };
-
-      setQueryParams(initialParams);
-
-      // Execute initial visualization
-      const res = newPipeline.transform(initialParams);
-      setQueryResult(res);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to ingest data.');
+      setDatasets((current) => {
+        const duplicate = current.find((item) => item.name === name);
+        return duplicate ? current.map((item) => item.name === name ? loaded : item) : [...current, loaded];
+      });
+      setActiveDatasetId(id);
+      configureQuery(nextPipeline);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to ingest the dataset.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleFileUpload = (file: File) => {
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'csv' && ext !== 'json') {
-      setErrorMessage('Please upload a valid .csv or .json file.');
+  useEffect(() => {
+    const sample = SAMPLE_DATASETS[0];
+    loadDataset(sample.data, sample.format, sample.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFile = (file: File) => {
+    const format = file.name.split('.').pop()?.toLowerCase();
+    if (format !== 'csv' && format !== 'json') {
+      setError('Only CSV and JSON files are supported.');
       return;
     }
-
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      if (text) {
-        loadDatasetFromText(text, ext as 'csv' | 'json', file.name);
-      }
-    };
-    reader.onerror = () => {
-      setErrorMessage('Error reading uploaded file.');
-    };
+    reader.onload = () => loadDataset(String(reader.result || ''), format, file.name);
+    reader.onerror = () => setError('The selected file could not be read.');
     reader.readAsText(file);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
+  const selectDataset = (dataset: LoadedDataset) => {
+    setActiveDatasetId(dataset.id);
+    configureQuery(dataset.pipeline);
   };
 
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileUpload(e.dataTransfer.files[0]);
-    }
-  };
-
-  // Re-run transformation when query parameters change
-  const handleParamsChange = (newParams: QueryParams) => {
-    setQueryParams(newParams);
+  const handleParamsChange = (nextParams: QueryParams) => {
+    setQueryParams(nextParams);
     if (!pipeline) return;
-
     try {
-      setErrorMessage(null);
-      const res = pipeline.transform(newParams);
-      setQueryResult(res);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Error processing query parameters.');
+      setError(null);
+      setQueryResult(pipeline.transform(nextParams));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to process the query.');
     }
   };
 
-  // Handle Natural Language query
-  const handleNaturalLanguageQuery = (prompt: string) => {
+  const runNaturalLanguageQuery = (prompt: string) => {
     if (!pipeline || !schema) return;
     setIsLoading(true);
-    setErrorMessage(null);
-
-    const promptLower = prompt.toLowerCase();
-    const cols = schema.columns;
-
-    // 1. Identify metric
-    let detectedMetric: QueryParams['metric'] = 'count';
-    const metricKeywords: [QueryParams['metric'], string[]][] = [
-      ['sum', ['total', 'sum', 'overall', 'gross', 'revenue', 'amount']],
-      ['mean', ['average', 'avg', 'mean', 'per']],
-      ['median', ['median', 'middle']],
-      ['min', ['minimum', 'min', 'lowest', 'least']],
-      ['max', ['maximum', 'max', 'highest', 'peak', 'top']],
-      ['count', ['number of', 'count', 'frequency', 'volume', 'how many']],
+    setError(null);
+    setAiNote(null);
+    const normalized = prompt.toLowerCase();
+    const columns = schema.columns;
+    let metric: QueryParams['metric'] = 'count';
+    const metricRules: [QueryParams['metric'], string[]][] = [
+      ['sum', ['total', 'sum', 'overall', 'revenue', 'sales']],
+      ['mean', ['average', 'avg', 'mean']],
+      ['median', ['median']],
+      ['min', ['minimum', 'lowest', 'least']],
+      ['max', ['maximum', 'highest', 'peak', 'top']],
+      ['count', ['number of', 'count', 'frequency', 'how many']],
     ];
-
-    for (const [m, keywords] of metricKeywords) {
-      if (keywords.some((k) => promptLower.includes(k))) {
-        detectedMetric = m;
-        break;
+    metricRules.find(([value, words]) => {
+      if (words.some((word) => normalized.includes(word))) {
+        metric = value;
+        return true;
       }
-    }
+      return false;
+    });
 
-    // 2. Identify target numerical column & group dimension
-    let matchedTarget: string | undefined = undefined;
-    let matchedGroup: string | undefined = undefined;
-
-    for (const c of cols) {
-      const cLower = c.name.toLowerCase();
-      if (promptLower.includes(cLower)) {
-        if (c.type === 'numeric' && !matchedTarget) {
-          matchedTarget = c.name;
-        } else if (!matchedGroup) {
-          matchedGroup = c.name;
-        }
-      }
-    }
-
-    // Fallbacks
-    if (!matchedGroup) {
-      const firstCat = cols.find((c) => c.type === 'categorical' || c.type === 'datetime');
-      matchedGroup = firstCat?.name || cols[0]?.name || '';
-    }
-    if (!matchedTarget && detectedMetric !== 'count') {
-      const firstNum = cols.find((c) => c.type === 'numeric');
-      matchedTarget = firstNum?.name;
-    }
-
-    // 3. Infer Chart Type
-    let detectedChartType: ChartType = 'bar';
-    if (['line', 'trend', 'over time', 'timeline', 'monthly'].some((w) => promptLower.includes(w))) {
-      detectedChartType = 'line';
-    } else if (['doughnut', 'donut', 'pie', 'share', 'distribution', 'proportion'].some((w) => promptLower.includes(w))) {
-      detectedChartType = promptLower.includes('donut') || promptLower.includes('doughnut') ? 'doughnut' : 'pie';
-    } else if (['scatter', 'correlation', 'versus', 'vs'].some((w) => promptLower.includes(w))) {
-      detectedChartType = 'scatter';
-    }
-
-    // 4. Infer Top N
-    let topN = 10;
-    const topMatch = promptLower.match(/top\s*(\d+)/);
-    if (topMatch && topMatch[1]) {
-      topN = parseInt(topMatch[1], 10);
-    }
-
-    const updatedParams: QueryParams = {
+    const matchedNumeric = columns.find((column) =>
+      column.type === 'numeric' && normalized.includes(column.name.toLowerCase()));
+    const matchedDimension = columns.find((column) =>
+      normalized.includes(column.name.toLowerCase()));
+    const fallbackDimension = columns.find((column) => column.type === 'categorical' || column.type === 'datetime')
+      || columns[0];
+    const fallbackNumeric = columns.find((column) => column.type === 'numeric');
+    let chartType: ChartType = 'bar';
+    if (['line', 'trend', 'over time', 'monthly', 'timeline'].some((word) => normalized.includes(word))) chartType = 'line';
+    if (['pie', 'share', 'distribution', 'proportion'].some((word) => normalized.includes(word))) chartType = 'pie';
+    if (['donut', 'doughnut'].some((word) => normalized.includes(word))) chartType = 'doughnut';
+    if (['scatter', 'correlation', 'versus', ' vs '].some((word) => normalized.includes(word))) chartType = 'scatter';
+    const topMatch = normalized.match(/top\s*(\d+)/);
+    const nextParams: QueryParams = {
       ...queryParams,
-      group_by: matchedGroup,
-      target_column: matchedTarget,
-      metric: detectedMetric,
-      chart_type: detectedChartType,
-      top_n: topN,
-      sort_order: 'desc',
+      group_by: matchedDimension?.name || fallbackDimension?.name || '',
+      target_column: matchedNumeric?.name || (metric === 'count' ? undefined : fallbackNumeric?.name),
+      metric,
+      chart_type: chartType,
+      top_n: topMatch ? Number(topMatch[1]) : 10,
+      sort_order: normalized.includes('ascending') || normalized.includes('lowest') ? 'asc' : 'desc',
     };
-
     try {
-      const res = pipeline.transform(updatedParams);
-      setQueryParams(updatedParams);
-      setQueryResult(res);
-      setAiNote(`Interpreted: ${detectedMetric.toUpperCase()} of ${matchedTarget || 'Records'} grouped by "${matchedGroup}" (Top ${topN}, ${detectedChartType} chart)`);
-    } catch (err: any) {
-      setErrorMessage(`Failed to execute parsed query: ${err.message}`);
+      const result = pipeline.transform(nextParams);
+      setQueryParams(nextParams);
+      setQueryResult(result);
+      setAiNote(`Interpreted ${metric} by "${nextParams.group_by}" as a ${chartType} visualization.`);
+      setHistory((items) => [{
+        id: Date.now(), prompt, dataset: activeDataset?.name || 'Dataset', createdAt: new Date(), result,
+      }, ...items]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The query could not be processed.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col font-sans">
-      {/* Top Application Navbar */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-6 py-3.5 shadow-2xs">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          {/* Logo & Branding */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
-              <BarChart2 className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold text-slate-900 tracking-tight">AI Chart Builder</h1>
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200/60 rounded-full">
-                  Pandas + Chart.js
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Full-Stack Ingestion Pipeline, Dynamic Aggregations & AI Visualizations
-              </p>
-            </div>
-          </div>
+  const navigate = (nextPage: Page) => {
+    setPage(nextPage);
+    setMobileOpen(false);
+  };
 
-          {/* Quick Sample Selector & File Upload */}
-          <div className="flex items-center flex-wrap gap-2.5">
-            <div className="hidden md:flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1 text-xs">
-              <span className="text-[11px] font-medium text-slate-400 pl-2 pr-1">Sample Data:</span>
-              {SAMPLE_DATASETS.map((ds) => (
-                <button
-                  key={ds.id}
-                  onClick={() => loadDatasetFromText(ds.data, ds.format, ds.name)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                    currentDatasetName === ds.name
-                      ? 'bg-white text-indigo-700 shadow-2xs font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  {ds.name.split(' ')[0]}
-                </button>
-              ))}
-            </div>
+  const suggestions = [
+    'Show total sales by category',
+    'Find the top five products',
+    'Analyze monthly trends',
+    'Identify missing values',
+    'Compare average values between groups',
+  ];
 
-            {/* Hidden File Input */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept=".csv,.json"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  handleFileUpload(e.target.files[0]);
-                }
-                e.target.value = '';
-              }}
-              className="hidden"
-            />
-
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              Upload CSV / JSON
-            </button>
-          </div>
+  const renderOverview = () => (
+    <div className="page-stack">
+      <section className="welcome-row">
+        <div>
+          <p className="eyebrow">Analytics workspace</p>
+          <h1>Welcome to AI Chart Builder</h1>
+          <p>Turn your data into meaningful insights.</p>
         </div>
-      </header>
-
-      {/* Main Workspace Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6">
-        {/* Dataset Header Pill / Dropzone Notice */}
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 rounded-2xl border transition-all ${
-            isDragging
-              ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-500/30'
-              : 'bg-white border-slate-200 shadow-2xs'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-slate-100 text-slate-700">
-              <FileSpreadsheet className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Active Dataset
-                </span>
-                <span className="text-sm font-bold text-slate-900">{currentDatasetName}</span>
-              </div>
-              <p className="text-xs text-slate-500">
-                {schema?.row_count} sanitized records • {schema?.column_count} validated columns • Drag & drop any CSV/JSON here to switch
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveBottomTab(activeBottomTab === 'code' ? 'preview' : 'code')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors cursor-pointer ${
-                activeBottomTab === 'code'
-                  ? 'bg-slate-900 border-slate-900 text-white'
-                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              <Code2 className="w-3.5 h-3.5" />
-              {activeBottomTab === 'code' ? 'Hide Code' : 'View Python Code'}
-            </button>
-          </div>
+        <div className="welcome-actions">
+          <button className="button secondary" onClick={() => fileInputRef.current?.click()}><Upload />Upload dataset</button>
+          <button className="button primary" onClick={() => navigate('ai')}><Sparkles />Analyze with AI</button>
         </div>
+      </section>
 
-        {/* Error Alert */}
-        {errorMessage && (
-          <div className="flex items-center gap-2.5 px-4 py-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
+      <section className="metric-grid">
+        <MetricCard icon={<Database />} label="Total Datasets" value={datasets.length.toLocaleString()} tone="indigo" />
+        <MetricCard icon={<Layers3 />} label="Total Rows" value={(schema?.row_count || 0).toLocaleString()} tone="cyan" />
+        <MetricCard icon={<Table2 />} label="Total Columns" value={(schema?.column_count || 0).toLocaleString()} tone="violet" />
+        <MetricCard icon={<AlertCircle />} label="Missing Values" value={missingValues.toLocaleString()} tone="amber" />
+      </section>
 
-        {/* AI Interpretation Banner */}
-        {aiNote && (
-          <div className="flex items-center gap-2.5 px-4 py-2.5 bg-indigo-50/80 border border-indigo-200 text-indigo-900 rounded-xl text-xs">
-            <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span className="font-medium">{aiNote}</span>
-          </div>
-        )}
-
-        {/* Core Interactive Grid: Query Panel (Left) & Dynamic Canvas (Right) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Query Control Panel */}
-          <div className="lg:col-span-5 flex flex-col gap-4">
-            <QueryBuilder
-              schema={schema}
-              params={queryParams}
-              onChangeParams={handleParamsChange}
-              onExecuteNaturalQuery={handleNaturalLanguageQuery}
-              isLoading={isLoading}
-            />
-          </div>
-
-          {/* Dynamic Chart Canvas */}
-          <div className="lg:col-span-7 flex flex-col min-h-[500px]">
-            <ChartCanvas
-              queryResult={queryResult}
-              chartType={queryParams.chart_type}
-            />
-          </div>
+      <section className="overview-grid">
+        <div className="panel chart-panel">
+          <PanelHeader title="Current visualization" subtitle={activeDataset?.name || 'No active dataset'} action={<button className="text-button" onClick={() => navigate('visualizations')}>Open workspace <ChevronRight /></button>} />
+          <ChartCanvas queryResult={queryResult} chartType={queryParams.chart_type} />
         </div>
-
-        {/* Bottom Inspection Section: Data Preview or Python Code Inspector */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setActiveBottomTab('preview')}
-                className={`flex items-center gap-1.5 pb-2 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 -mb-2.5 ${
-                  activeBottomTab === 'preview'
-                    ? 'border-indigo-600 text-indigo-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Database className="w-3.5 h-3.5" />
-                Data Sanitization & Table Preview
+        <div className="panel recent-panel">
+          <PanelHeader title="Recent datasets" subtitle={`${datasets.length} loaded`} action={<button className="icon-button" onClick={() => navigate('datasets')}><Plus /></button>} />
+          <div className="dataset-list">
+            {datasets.slice().reverse().map((dataset) => (
+              <button key={dataset.id} className={`dataset-row ${dataset.id === activeDataset?.id ? 'selected' : ''}`} onClick={() => selectDataset(dataset)}>
+                <span className="dataset-icon"><FileSpreadsheet /></span>
+                <span><strong>{dataset.name}</strong><small>{dataset.schema.row_count.toLocaleString()} rows · {dataset.schema.column_count} columns</small></span>
+                <ChevronRight />
               </button>
-              <button
-                onClick={() => setActiveBottomTab('code')}
-                className={`flex items-center gap-1.5 pb-2 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 -mb-2.5 ${
-                  activeBottomTab === 'code'
-                    ? 'border-indigo-600 text-indigo-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Code2 className="w-3.5 h-3.5" />
-                Backend Python Architecture (pipeline.py, app.py)
-              </button>
-            </div>
+            ))}
           </div>
-
-          {activeBottomTab === 'preview' ? (
-            <DataPreview
-              rows={pipeline?.cleanedRows || []}
-              schema={schema}
-            />
-          ) : (
-            <CodeInspector />
-          )}
         </div>
-      </main>
+      </section>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-4 px-6 text-center text-xs text-slate-400">
-        AI Chart Builder • Full-Stack Data Pipeline & Chart.js Architecture • Powered by Google AI Studio
-      </footer>
+      <section className="panel activity-panel">
+        <PanelHeader title="Recent activity" subtitle="Queries performed in this session" />
+        {history.length === 0 ? (
+          <div className="empty-inline"><History /><span>No analysis activity yet. Start with an AI query.</span></div>
+        ) : history.slice(0, 4).map((item) => (
+          <div className="activity-row" key={item.id}>
+            <span className="activity-icon"><Sparkles /></span><span><strong>{item.prompt}</strong><small>{item.dataset} · {item.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small></span>
+          </div>
+        ))}
+      </section>
     </div>
   );
+
+  const renderDatasets = () => (
+    <div className="page-stack">
+      <PageHeading title="Datasets" subtitle="Upload, inspect, and manage your source data." action={<button className="button primary" onClick={() => fileInputRef.current?.click()}><Upload />Upload dataset</button>} />
+      <div className={`upload-zone ${dragging ? 'dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); if (event.dataTransfer.files[0]) handleFile(event.dataTransfer.files[0]); }}>
+        <span className="upload-icon"><Upload /></span>
+        <div><strong>Drop a dataset here</strong><p>CSV and JSON files are supported</p></div>
+        <button className="button secondary" onClick={() => fileInputRef.current?.click()}>Browse files</button>
+      </div>
+      <section className="dataset-card-grid">
+        {datasets.map((dataset) => (
+          <article className="dataset-card panel" key={dataset.id}>
+            <div className="dataset-card-head"><span className="dataset-icon"><FileSpreadsheet /></span><span className="status-dot">Ready</span></div>
+            <h3>{dataset.name}</h3>
+            <div className="dataset-stats"><span><strong>{dataset.schema.row_count.toLocaleString()}</strong><small>Rows</small></span><span><strong>{dataset.schema.column_count}</strong><small>Columns</small></span></div>
+            <p>Added {dataset.uploadedAt.toLocaleDateString()}</p>
+            <button className="button secondary full" onClick={() => { selectDataset(dataset); navigate('visualizations'); }}>Open dataset</button>
+          </article>
+        ))}
+      </section>
+      {pipeline && <section className="panel"><DataPreview rows={pipeline.cleanedRows} schema={schema} /></section>}
+    </div>
+  );
+
+  const renderAI = () => (
+    <div className="page-stack ai-page">
+      <PageHeading title="AI Analysis" subtitle="Ask questions about your active dataset in natural language." />
+      {aiNote && <div className="notice success"><Sparkles />{aiNote}</div>}
+      <section className="panel ai-composer">
+        <div className="dataset-context"><span className="dataset-icon"><FileSpreadsheet /></span><span><small>Selected dataset</small><strong>{activeDataset?.name || 'No dataset selected'}</strong></span></div>
+        <form onSubmit={(event) => event.preventDefault()} className="ai-input-shell">
+          <textarea value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} placeholder="Ask anything about your dataset..." rows={4} />
+          <button type="button" className="button primary" disabled={!aiPrompt.trim() || isLoading} onClick={() => { runNaturalLanguageQuery(aiPrompt); }}>
+            {isLoading ? <span className="spinner" /> : <Sparkles />} {isLoading ? 'Analyzing' : 'Run analysis'}
+          </button>
+        </form>
+        <div className="suggestions">
+          {suggestions.map((suggestion) => <button key={suggestion} onClick={() => { setAiPrompt(suggestion); runNaturalLanguageQuery(suggestion); }}>{suggestion}</button>)}
+        </div>
+      </section>
+      <section className="panel ai-result">
+        <PanelHeader title="Analysis result" subtitle={queryResult ? `${queryResult.summary.total_groups || queryResult.summary.total_points || 0} result elements` : 'Run a query to generate a result'} />
+        <ChartCanvas queryResult={queryResult} chartType={queryParams.chart_type} />
+      </section>
+    </div>
+  );
+
+  const renderWorkspace = (mode: 'visualizations' | 'query') => (
+    <div className="page-stack">
+      <PageHeading title={mode === 'visualizations' ? 'Visualizations' : 'Query Builder'} subtitle={mode === 'visualizations' ? 'Shape and export insights from your dataset.' : 'Build precise filters, groups, and aggregations.'} />
+      <div className="workspace-grid">
+        <section className="panel controls-panel">
+          <QueryBuilder schema={schema} params={queryParams} onChangeParams={handleParamsChange} onExecuteNaturalQuery={runNaturalLanguageQuery} isLoading={isLoading} />
+        </section>
+        <section className="panel chart-panel">
+          <ChartCanvas queryResult={queryResult} chartType={queryParams.chart_type} />
+        </section>
+      </div>
+    </div>
+  );
+
+  const renderHistory = () => (
+    <div className="page-stack">
+      <PageHeading title="Analysis History" subtitle="Review queries performed during this session." />
+      <section className="panel history-list">
+        {history.length === 0 ? (
+          <div className="empty-state"><History /><h3>No analysis history</h3><p>Your completed AI queries will appear here.</p><button className="button primary" onClick={() => navigate('ai')}>Ask AI a question</button></div>
+        ) : history.map((item) => (
+          <div className="history-row" key={item.id}>
+            <span className="activity-icon"><Sparkles /></span>
+            <span className="history-copy"><strong>{item.prompt}</strong><small>{item.dataset} · {item.createdAt.toLocaleString()}</small></span>
+            <button className="button secondary" onClick={() => { setQueryResult(item.result); navigate('visualizations'); }}>View result</button>
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+
+  const renderSettings = () => (
+    <div className="page-stack">
+      <PageHeading title="Settings" subtitle="Application preferences and status." />
+      <div className="settings-grid">
+        <section className="panel settings-card"><PanelHeader title="Appearance" subtitle="Dashboard display preferences" /><div className="setting-row"><span><strong>Dark appearance</strong><small>Charcoal and navy theme</small></span><span className="toggle on"><i /></span></div></section>
+        <section className="panel settings-card"><PanelHeader title="Data processing" subtitle="Local client pipeline status" /><div className="status-line"><span className="status-dot" />Processing engine connected</div><div className="status-line"><span className="status-dot" />CSV and JSON ingestion enabled</div></section>
+        <section className="panel settings-card"><PanelHeader title="About" subtitle="Application information" /><div className="about-copy"><strong>AI Chart Builder</strong><p>Data analytics and visualization workspace</p><small>Version 1.0 · Chart.js + React</small></div></section>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
+      {mobileOpen && <button className="mobile-backdrop" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
+      <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
+        <div className="brand"><span className="brand-mark"><BarChart3 /></span><span className="brand-copy"><strong>AI Chart Builder</strong><small>Analytics workspace</small></span></div>
+        <nav>
+          <p className="nav-label">Workspace</p>
+          {navigation.map((item) => {
+            const Icon = item.icon;
+            return <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} onClick={() => navigate(item.id)} title={collapsed ? item.label : undefined}><Icon /><span>{item.label}</span>{page === item.id && <i />}</button>;
+          })}
+        </nav>
+        <div className="sidebar-bottom">
+          <button className={`nav-item ${page === 'settings' ? 'active' : ''}`} onClick={() => navigate('settings')}><Settings /><span>Settings</span></button>
+          <button className="nav-item" onClick={() => window.open('https://github.com/ajay-malhotra05/AI-Chart-Builder-Data-Analytics-Visualization-Tool', '_blank')}><CircleHelp /><span>Help & Support</span></button>
+          <div className="profile"><span className="avatar">AM</span><span><strong>Local workspace</strong><small>Personal account</small></span></div>
+        </div>
+      </aside>
+
+      <div className="main-shell">
+        <header className="topbar">
+          <div className="topbar-left">
+            <button className="icon-button mobile-menu" onClick={() => setMobileOpen(true)}><Menu /></button>
+            <button className="icon-button collapse-button" onClick={() => setCollapsed((value) => !value)}>{collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}</button>
+            <div className="breadcrumb"><span>Workspace</span><ChevronRight /><strong>{pageTitles[page]}</strong></div>
+          </div>
+          <div className="topbar-actions">
+            <label className="global-search"><Search /><input placeholder="Search workspace..." /></label>
+            <button className="icon-button notification"><Bell /><i /></button>
+            <button className="icon-button"><Moon /></button>
+          </div>
+        </header>
+
+        <main>
+          <input ref={fileInputRef} className="hidden" type="file" accept=".csv,.json" onChange={(event) => { if (event.target.files?.[0]) handleFile(event.target.files[0]); event.target.value = ''; }} />
+          {error && <div className="notice error"><AlertCircle /><span>{error}</span><button onClick={() => setError(null)}><X /></button></div>}
+          {page === 'overview' && renderOverview()}
+          {page === 'datasets' && renderDatasets()}
+          {page === 'ai' && renderAI()}
+          {page === 'visualizations' && renderWorkspace('visualizations')}
+          {page === 'query' && renderWorkspace('query')}
+          {page === 'history' && renderHistory()}
+          {page === 'settings' && renderSettings()}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone: string }) {
+  return <article className="metric-card panel"><span className={`metric-icon ${tone}`}>{icon}</span><div><p>{label}</p><strong>{value}</strong></div></article>;
+}
+
+function PageHeading({ title, subtitle, action }: { title: string; subtitle: string; action?: React.ReactNode }) {
+  return <section className="page-heading"><div><h1>{title}</h1><p>{subtitle}</p></div>{action}</section>;
+}
+
+function PanelHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
+  return <div className="panel-header"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action}</div>;
 }
